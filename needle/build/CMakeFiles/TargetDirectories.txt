@@ -1,0 +1,4 @@
+/home/zhangify/workspace/dlsys_hw/needle/build/CMakeFiles/rebuild_cache.dir
+/home/zhangify/workspace/dlsys_hw/needle/build/CMakeFiles/edit_cache.dir
+/home/zhangify/workspace/dlsys_hw/needle/build/CMakeFiles/ndarray_backend_cuda.dir
+/home/zhangify/workspace/dlsys_hw/needle/build/CMakeFiles/ndarray_backend_cpu.dir
