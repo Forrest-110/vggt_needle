@@ -14,6 +14,7 @@ import math
 from ..backend_selection import array_api, BACKEND
 from .ops_tuple import *
 
+from utils import print_cuda_mem
 
 class EWiseAdd(TensorOp):
     def compute(self, a: NDArray, b: NDArray):
@@ -341,7 +342,7 @@ class MatMul(TensorOp):
         
         b2 = b.reshape((B, k, n))
 
-        out2 = array_api.empty((B, m, n))
+        out2 = array_api.empty((B, m, n), device=a2.device)
         for i in range(B):
             out2[i, :, :] = (a2[i, :, :].compact().reshape((m, k)) @ b2[i, :, :].compact().reshape((k, n))).reshape((1, m, n))   # (m, n)
 
@@ -429,6 +430,16 @@ class ReLU(TensorOp):
 def relu(a):
     return ReLU()(a)
 
+class ReluInplace(TensorOp):
+    def compute(self, a):
+        array_api.relu_(a)
+        return a
+
+    def gradient(self, out, grad_out, a):
+        raise NotImplementedError
+
+def relu_(a):
+    return ReluInplace()(a)
 
 class Tanh(TensorOp):
     def compute(self, a):
@@ -618,14 +629,54 @@ class Conv(TensorOp):
         self.stride = stride
         self.padding = padding
 
+    # def compute(self, A, B):
+    #     s = self.stride
+    #     p = self.padding
+
+    #     N, H, W, C_in = A.shape
+    #     K, K2, C_in_w, C_out = B.shape
+
+    #     if p > 0:
+    #         A_pad = A.pad(((0, 0), (p, p), (p, p), (0, 0)))
+    #     else:
+    #         A_pad = A
+
+    #     Hp, Wp = A_pad.shape[1], A_pad.shape[2]
+    #     H_out = (Hp - K) // s + 1
+    #     W_out = (Wp - K) // s + 1
+
+    #     Y = array_api.full((N, H_out, W_out, C_out), 0.0, device=A.device)
+        
+    #     for i in range(K):
+    #         for j in range(K):
+    #             A_ij = A_pad[:, i : i + H_out * s : s, j : j + W_out * s : s, :]
+    #             W_ij = B[i, j, :, :]
+    #             A_e = A_ij.compact().reshape((N, H_out, W_out, C_in, 1)).broadcast_to((N, H_out, W_out, C_in, C_out))
+    #             W_e = W_ij.compact().reshape((1, 1, 1, C_in, C_out)).broadcast_to((N, H_out, W_out, C_in, C_out))
+    #             contrib = (A_e * W_e).sum(axis=3)
+
+    #             Y = Y + contrib
+
+    #     return Y.compact()
+
     def compute(self, A, B):
+        """
+        A: [N, H, W, C_in]
+        B: [K, K, C_in, C_out]
+        Returns:
+            Y: [N, H_out, W_out, C_out]
+        """
         s = self.stride
         p = self.padding
 
         N, H, W, C_in = A.shape
         K, K2, C_in_w, C_out = B.shape
+        assert K == K2
+        assert C_in == C_in_w
 
+        # Padding
         if p > 0:
+            # pad along H and W only: ((before_N, after_N), (before_H, after_H), ...)
             A_pad = A.pad(((0, 0), (p, p), (p, p), (0, 0)))
         else:
             A_pad = A
@@ -634,16 +685,41 @@ class Conv(TensorOp):
         H_out = (Hp - K) // s + 1
         W_out = (Wp - K) // s + 1
 
+        # Output
         Y = array_api.full((N, H_out, W_out, C_out), 0.0, device=A.device)
 
+        # Compute convolution via per-(i,j) GEMM:
+        #   For each kernel offset (i, j),
+        #   A_ij: [N, H_out, W_out, C_in] -> [N*H_out*W_out, C_in]
+        #   W_ij: [C_in, C_out]
+        #   contrib = A_ij_flat @ W_ij  -> [N*H_out*W_out, C_out]
+        #   reshape contrib to [N, H_out, W_out, C_out] and accumulate.
         for i in range(K):
-            for j in range(K):
-                A_ij = A_pad[:, i : i + H_out * s : s, j : j + W_out * s : s, :]
-                W_ij = B[i, j, :, :]
-                A_e = A_ij.compact().reshape((N, H_out, W_out, C_in, 1)).broadcast_to((N, H_out, W_out, C_in, C_out))
-                W_e = W_ij.compact().reshape((1, 1, 1, C_in, C_out)).broadcast_to((N, H_out, W_out, C_in, C_out))
-                contrib = (A_e * W_e).sum(axis=3)
+            h_start = i
+            h_end = h_start + H_out * s
+            # Stride in height
+            A_i = A_pad[:, h_start:h_end:s, :, :]  # [N, H_out, Wp, C_in]
 
+            for j in range(K):
+                w_start = j
+                w_end = w_start + W_out * s
+
+                # [N, H_out, W_out, C_in]
+                A_ij = A_i[:, :, w_start:w_end:s, :]
+
+                # Flatten spatial + batch dims into one matrix
+                # Shape: [N * H_out * W_out, C_in]
+                A_ij_flat = A_ij.compact().reshape((N * H_out * W_out, C_in))
+
+                # Corresponding kernel slice: [C_in, C_out]
+                W_ij = B[i, j, :, :].compact().reshape((C_in, C_out))
+
+                # Matrix multiply: [N*H_out*W_out, C_out]
+                contrib_flat = A_ij_flat @ W_ij
+                # Back to NHWC
+                contrib = contrib_flat.reshape((N, H_out, W_out, C_out))
+
+                # Accumulate
                 Y = Y + contrib
 
         return Y.compact()

@@ -1,4 +1,4 @@
-/home/zhangify/workspace/dlsys_hw/needle/build/CMakeFiles/rebuild_cache.dir
-/home/zhangify/workspace/dlsys_hw/needle/build/CMakeFiles/edit_cache.dir
-/home/zhangify/workspace/dlsys_hw/needle/build/CMakeFiles/ndarray_backend_cuda.dir
-/home/zhangify/workspace/dlsys_hw/needle/build/CMakeFiles/ndarray_backend_cpu.dir
+/home/yifeizh3/workspace/vggt_needle/needle/build/CMakeFiles/ndarray_backend_cpu.dir
+/home/yifeizh3/workspace/vggt_needle/needle/build/CMakeFiles/ndarray_backend_cuda.dir
+/home/yifeizh3/workspace/vggt_needle/needle/build/CMakeFiles/edit_cache.dir
+/home/yifeizh3/workspace/vggt_needle/needle/build/CMakeFiles/rebuild_cache.dir

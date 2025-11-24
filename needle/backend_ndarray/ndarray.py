@@ -7,7 +7,7 @@ import numpy as np
 
 from . import ndarray_backend_numpy
 from . import ndarray_backend_cpu  # type: ignore[attr-defined]
-
+# from . import ndarray_backend_cuda
 
 # math.prod not in Python 3.7
 def prod(x: Iterable[int]) -> int:
@@ -386,9 +386,9 @@ class NDArray:
         old_strides = self._strides
 
         if len(new_shape) < len(old_shape):
-            raise AssertionError()
+            raise AssertionError(f"new shape {new_shape} < old shape {old_shape}")
         if any(d <= 0 for d in new_shape):
-            raise AssertionError()
+            raise AssertionError(f"invalid new shape {new_shape}")
         new_ndim = len(new_shape)
         old_ndim = len(old_shape)
         ndim_diff = new_ndim - old_ndim
@@ -812,6 +812,27 @@ class NDArray:
         out[idx] = self
         return out
 
+    def relu_(self) -> "NDArray":
+        """
+        In-place ReLU: x <- max(x, 0).
+
+        Note:
+            - Requires the array to be compact; otherwise we first compact
+              (which may allocate a new buffer) and then overwrite self to
+              point to that compact buffer.
+        """
+        if not self.is_compact():
+            # Make a compact copy, then point this NDArray to that memory
+            compact = self.compact()
+            self._shape = compact._shape
+            self._strides = compact._strides
+            self._offset = compact._offset
+            self._handle = compact._handle
+
+        # in-place max with 0.0: use same handle for input and output
+        self.device.scalar_maximum(self._handle, 0.0, self._handle)
+        return self
+
 def array(a: Any, dtype: str = "float32", device: BackendDevice | None = None) -> NDArray:
     """Convenience methods to match numpy a bit more closely."""
     dtype = "float32" if dtype is None else dtype
@@ -945,3 +966,6 @@ def where(cond: NDArray, x: NDArray | float, y: NDArray | float) -> NDArray:
     return cond * x + (1 - cond) * y
 
 
+def relu_(a: NDArray) -> NDArray:
+    # in-place relu
+    return a.relu_()

@@ -242,6 +242,101 @@ class Module:
         else:
             setattr(obj, last, value)
 
+    def _apply(self, fn):
+        """
+        Internal helper: recursively apply `fn` to all Tensors in this module
+        (parameters + buffers + any Tensor attributes in containers).
+        """
+        # 1) Apply to direct Tensor attributes and recurse into submodules
+        for name, value in list(self.__dict__.items()):
+            # Skip our own bookkeeping dict for now, handle buffers separately
+            if name == "_buffers":
+                continue
+
+            # Tensor: apply fn and rebind
+            from needle import Tensor  # or your actual Tensor import
+            if isinstance(value, Tensor):
+                setattr(self, name, fn(value))
+
+            # Child module: recurse
+            elif isinstance(value, Module):
+                value._apply(fn)
+
+            # Containers: list / tuple of modules / tensors
+            elif isinstance(value, (list, tuple)):
+                new_seq = []
+                changed = False
+                for v in value:
+                    if isinstance(v, Tensor):
+                        new_seq.append(fn(v))
+                        changed = True
+                    elif isinstance(v, Module):
+                        v._apply(fn)
+                        new_seq.append(v)
+                    else:
+                        new_seq.append(v)
+                if changed:
+                    if isinstance(value, tuple):
+                        new_seq = tuple(new_seq)
+                    setattr(self, name, new_seq)
+
+            # Dict containers
+            elif isinstance(value, dict):
+                new_dict = {}
+                changed = False
+                for k, v in value.items():
+                    if isinstance(v, Tensor):
+                        new_dict[k] = fn(v)
+                        changed = True
+                    elif isinstance(v, Module):
+                        v._apply(fn)
+                        new_dict[k] = v
+                    else:
+                        new_dict[k] = v
+                if changed:
+                    value.clear()
+                    value.update(new_dict)
+
+        # 2) Apply to registered buffers (and rebind attribute as well)
+        from needle import Tensor  # or your actual Tensor import
+        for name, buf in list(self._buffers.items()):
+            if buf is None:
+                continue
+            if not isinstance(buf, Tensor):
+                continue
+            new_buf = fn(buf)
+            self._buffers[name] = new_buf
+            setattr(self, name, new_buf)
+
+        return self
+
+    def to(self, device=None, dtype=None):
+        """
+        Move all parameters and buffers to the given device / dtype.
+
+        Usage:
+            model.to("cuda")
+            model.to(device="cuda:0")
+            model.to(dtype="float16")
+            model.to(device="cuda", dtype="float16")
+
+        This is in-place and returns self (like PyTorch).
+        """
+        from needle import Tensor  # or your actual Tensor import
+
+        def convert(t: Tensor):
+            # Assumes Tensor.to(...) supports device and/or dtype kwargs.
+            if device is not None and dtype is not None:
+                return t.to(device=device, dtype=dtype)
+            elif device is not None:
+                return t.to(device=device)
+            elif dtype is not None:
+                return t.to(dtype=dtype)
+            else:
+                return t
+
+        return self._apply(convert)
+
 
 class ModuleList(Module):
     def __init__(self, modules=None):
@@ -327,8 +422,15 @@ class Flatten(Module):
 
 
 class ReLU(Module):
+    def __init__(self, inplace: bool = False):
+        super().__init__()
+        self.inplace = inplace
+
     def forward(self, x: Tensor) -> Tensor:
-        return ops.relu(x)
+        if self.inplace:
+            return ops.relu_(x)
+        else:
+            return ops.relu(x)
 
 class SiLU(Module):
     def forward(self, x: Tensor) -> Tensor:

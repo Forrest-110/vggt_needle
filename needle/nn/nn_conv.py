@@ -7,6 +7,7 @@ import needle.init as init
 import numpy as np
 from .nn_basic import Parameter, Module
 
+from utils import print_cuda_mem
 
 class Conv(Module):
     """

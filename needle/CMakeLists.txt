@@ -3,16 +3,23 @@ project(needle C CXX)
 
 
 # find correct version of Python
-execute_process(COMMAND python3-config --prefix
-  OUTPUT_VARIABLE Python_ROOT_DIR)
-find_package(Python COMPONENTS Development Interpreter REQUIRED)
-include_directories(${Python_INCLUDE_DIRS})
+#execute_process(COMMAND python3-config --prefix
+#  OUTPUT_VARIABLE Python_ROOT_DIR)
+#find_package(Python COMPONENTS Development Interpreter REQUIRED)
+#include_directories(${Python_INCLUDE_DIRS})
 
 # find pybind
 execute_process(COMMAND python3 -m pybind11 --cmakedir
   RESULT_VARIABLE __pybind_exit_code
   OUTPUT_VARIABLE __pybind_path
   OUTPUT_STRIP_TRAILING_WHITESPACE)
+
+find_package(Python COMPONENTS Development Interpreter REQUIRED)
+
+message(STATUS "Using Python executable: ${Python_EXECUTABLE}")
+message(STATUS "Python include dirs: ${Python_INCLUDE_DIRS}")
+include_directories(${Python_INCLUDE_DIRS})
+
 find_package(pybind11 PATHS ${__pybind_path})
 
 
