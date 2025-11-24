@@ -139,7 +139,7 @@ device = cuda()
 # -----------------------------
 # NOTE: adjust shapes to whatever VGGT actually expects.
 # Here I assume something like [B, S, C, H, W].
-B, S, C, H, W = 1, 2, 3, 224, 224  # change if needed
+B, S, C, H, W = 1, 12, 3, 224, 224  # change if needed
 
 
 # Create a random input on the same Needle device

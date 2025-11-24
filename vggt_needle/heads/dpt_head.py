@@ -164,9 +164,9 @@ class DPTHead(nn.Module):
 
         # Concatenate results along the sequence dimension
         if self.feature_only:
-            return torch.cat(all_preds, dim=1)
+            return ops.cat(all_preds, dim=1)
         else:
-            return torch.cat(all_preds, dim=1), torch.cat(all_conf, dim=1)
+            return ops.cat(all_preds, dim=1), ops.cat(all_conf, dim=1)
 
     def _forward_impl(
         self,
