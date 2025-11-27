@@ -5,7 +5,29 @@ from needle.autograd import Tensor
 from needle import ops
 import needle.init as init
 import numpy as np
+from collections import defaultdict
+MODULE_PROFILE = defaultdict(lambda: [0.0, 0])
 
+
+def reset_module_profile():
+    MODULE_PROFILE.clear()
+
+
+def record_module_time(name: str, dt_ms: float):
+    total, cnt = MODULE_PROFILE[name]
+    MODULE_PROFILE[name] = [total + dt_ms, cnt + 1]
+
+
+def print_module_profile(top_k: int = 50):
+    items = sorted(
+        MODULE_PROFILE.items(),
+        key=lambda kv: kv[1][0],   # sort by total time
+        reverse=True,
+    )
+    print("\n=== Needle module profile (top {} by total time) ===".format(top_k))
+    for name, (total_ms, cnt) in items[:top_k]:
+        avg = total_ms / cnt if cnt else 0.0
+        print(f"{name:40s} {total_ms:9.3f} ms  (count={cnt}, avg={avg:.3f} ms)")
 
 class Parameter(Tensor):
     """A special kind of tensor that represents parameters."""
@@ -401,7 +423,7 @@ class Linear(Module):
 
     def forward(self, X: Tensor) -> Tensor:
         
-        Wt = ops.transpose(self.weight, axes=(-1, -2)) + 0.0  # (in_features, out_features)
+        Wt = ops.transpose(self.weight, axes=(-1, -2))  # (in_features, out_features)
         out = ops.matmul(X, Wt)
         # print(X.device)
         # exit()
@@ -797,10 +819,9 @@ class MultiheadAttention(Module):
         We implement y = x @ w^T + b, like torch.nn.functional.linear.
         """
         # w_T: (E_in, E_out)
-        w_T = ops.transpose(w, (1, 0))+0.0
+        w_T = ops.transpose(w, (1, 0))
         y = ops.matmul(x, w_T)  # (B, T, E_out)
         if b is not None:
-            b = b+0.0
             b_b = b.reshape((1, 1, -1)).broadcast_to(y.shape)
             y = y + b_b
         return y
@@ -865,8 +886,8 @@ class MultiheadAttention(Module):
         # 3) Scaled dot-product attention
         # attn_scores: (B, H, T_q, T_k)
         # q: (B, H, T_q, D), k: (B, H, T_k, D)
-        k_t = k.permute((0, 1, 3, 2)) + 0.0  # (B, H, D, T_k)
-        attn_scores = ops.matmul(q + 0.0, k_t)  # (B, H, T_q, T_k)
+        k_t = k.permute((0, 1, 3, 2))   # (B, H, D, T_k)
+        attn_scores = ops.matmul(q, k_t)  # (B, H, T_q, T_k)
 
         scale = (self.head_dim ** -0.5)
         attn_scores = attn_scores * scale
@@ -876,11 +897,11 @@ class MultiheadAttention(Module):
 
         # 4) Attention output
         # (B, H, T_q, D) = (B,H,T_q,T_k) @ (B,H,T_k,D)
-        attn_output_heads = ops.matmul(attn_weights, v + 0.0)  # (B, H, T_q, D)
+        attn_output_heads = ops.matmul(attn_weights, v)  # (B, H, T_q, D)
 
         # 5) Concatenate heads
         # (B, H, T_q, D) -> (B, T_q, H, D) -> (B, T_q, E)
-        attn_output = attn_output_heads.permute((0, 2, 1, 3)) + 0.0
+        attn_output = attn_output_heads.permute((0, 2, 1, 3))
         attn_output = attn_output.reshape((B, T_q, self.embed_dim))
 
         # 6) Final output projection
@@ -994,3 +1015,36 @@ class GroupNorm(Module):
             x_norm = x_norm * w + b
 
         return x_norm
+
+import time
+def _module_call_with_timing(orig_call):
+    def wrapped(self, *args, **kwargs):
+        # Try to detect device for CUDA sync
+        dev = None
+        for a in args:
+            if isinstance(a, Tensor):
+                dev = a.device
+                break
+
+        if dev is not None and dev.name == "cuda":
+            dev.cuda_synchronize()
+
+        t0 = time.perf_counter()
+        out = orig_call(self, *args, **kwargs)
+        if dev is not None and dev.name == "cuda":
+            dev.cuda_synchronize()
+
+        dt_ms = (time.perf_counter() - t0) * 1000.0
+
+        # Use either an explicit name or class name
+        name = getattr(self, "prof_name", None)
+        if name is None:
+            # e.g. "VGGTBlock" or "VGGTBlock#3"
+            name = self.__class__.__name__
+
+        record_module_time(name, dt_ms)
+        return out
+    return wrapped
+
+# Patch it once at startup
+Module.__call__ = _module_call_with_timing(Module.__call__)

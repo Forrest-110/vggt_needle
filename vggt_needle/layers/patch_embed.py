@@ -69,10 +69,10 @@ class PatchEmbed(nn.Module):
         assert W % patch_W == 0, f"Input image width {W} is not a multiple of patch width: {patch_W}"
         # print(self.proj.weight.sum())
         # exit()
-        x = self.proj(x)+0.0  # B C H W
+        x = self.proj(x)  # B C H W
  
         H, W = x.shape[2], x.shape[3]
-        x = x.reshape((x.shape[0], x.shape[1], -1)).transpose((1, 2))+0.0  # B HW C
+        x = x.reshape((x.shape[0], x.shape[1], -1)).transpose((1, 2)) # B HW C
         x = self.norm(x)
         if not self.flatten_embedding:
             x = x.reshape((-1, H, W, self.embed_dim))  # B H W C

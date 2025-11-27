@@ -19,6 +19,24 @@ TENSOR_COUNTER = 0
 
 from .backend_selection import array_api, NDArray, default_device, cpu
 
+import os, time
+PROFILE_NEEDLE = os.environ.get("NEEDLE_PROFILE", "0") == "1"
+_op_stats = {}  # name -> [total_time, count]
+
+def _record_op_time(name, dt):
+    total, cnt = _op_stats.get(name, (0.0, 0))
+    _op_stats[name] = (total + dt, cnt + 1)
+
+def clean_op_stats():
+    _op_stats.clear()
+
+def print_op_stats(top_k: int = 20):
+    items = sorted(_op_stats.items(), key=lambda kv: kv[1][0], reverse=True)
+    print(f"\n=== Needle op profile (top {top_k}) ===")
+    for name, (total, cnt) in items[:top_k]:
+        print(f"{name:20s}  {total*1000:10.3f} ms  (count={cnt}, avg={total/cnt*1000:.3f} ms)")
+
+
 class Op:
     """Operator definition."""
 
@@ -508,3 +526,95 @@ def sum_node_list(node_list):
     from functools import reduce
 
     return reduce(add, node_list)
+
+
+_real_tensorop_call = TensorOp.__call__
+
+def _timed_tensorop_call(self, *inputs, **kwargs):
+    if not PROFILE_NEEDLE:
+        return _real_tensorop_call(self, *inputs, **kwargs)
+
+    # optional: sync for cleaner GPU timings
+    from needle import cuda
+    dev = cuda()
+    if dev.enabled() and hasattr(dev, "synchronize"):
+        dev.synchronize()
+
+    t0 = time.perf_counter()
+    out = _real_tensorop_call(self, *inputs, **kwargs)
+
+    if dev.enabled() and hasattr(dev, "synchronize"):
+        dev.synchronize()
+
+    dt = time.perf_counter() - t0
+    _record_op_time(self.__class__.__name__, dt)
+    return out
+
+TensorOp.__call__ = _timed_tensorop_call
+
+# _real_tensorop_call = TensorOp.__call__
+
+# def _profiled_tensorop_call(self, *inputs, **kwargs):
+#     prev_name = array_api.get_current_op_name()
+#     array_api.set_current_op_name(self.__class__.__name__)
+#     try:
+#         return _real_tensorop_call(self, *inputs, **kwargs)
+#     finally:
+#         array_api.set_current_op_name(prev_name)
+
+# TensorOp.__call__ = _profiled_tensorop_call
+
+# from collections import defaultdict
+# NONCOMPACT_STATS = defaultdict(lambda: {"count": 0, "elem": 0})
+
+# def _record_noncompact(op_name: str, arr: NDArray):
+#     info = NONCOMPACT_STATS[op_name]
+#     info["count"] += 1
+#     info["elem"]  += arr.size
+
+# def print_noncompact_stats(top_k: int = 20):
+#     items = sorted(
+#         NONCOMPACT_STATS.items(),
+#         key=lambda kv: kv[1]["elem"],
+#         reverse=True,
+#     )
+#     print(f"\n=== Non-compact producer stats (top {top_k}) ===")
+#     for op_name, st in items[:top_k]:
+#         print(
+#             f"{op_name:20s}  count={st['count']:5d}  "
+#             f"total_elems={st['elem']:10d}"
+#         )
+
+# _realize_cached_data = Tensor.realize_cached_data
+
+# def _realize_with_noncompact_stats(self: "Tensor"):
+#     if self.cached_data is not None:
+#         return self.cached_data
+
+#     # no-op / leaf case: delegate
+#     if self.op is None:
+#         return _realize_cached_data(self)
+
+#     # 1) realize inputs
+#     input_data = [x.realize_cached_data() for x in self.inputs]
+
+#     # 2) run compute
+#     out = self.op.compute(*input_data)
+
+#     # 3) inspect NDArray(s) for compactness
+#     op_name = self.op.__class__.__name__
+
+#     def _inspect(nd):
+#         if isinstance(nd, NDArray) and not nd.is_compact():
+#             _record_noncompact(op_name, nd)
+
+#     if isinstance(out, NDArray):
+#         _inspect(out)
+#     elif isinstance(out, (tuple, list)):
+#         for nd in out:
+#             _inspect(nd)
+
+#     self.cached_data = out
+#     return out
+
+# Tensor.realize_cached_data = _realize_with_noncompact_stats

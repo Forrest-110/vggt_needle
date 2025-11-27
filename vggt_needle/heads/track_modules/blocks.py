@@ -93,7 +93,6 @@ class EfficientUpdateFormer(nn.Module):
 
         j = 0
         for i in range(len(self.time_blocks)):
-            tokens = tokens + 0.0
             time_tokens = tokens.reshape((B * N, T, -1))  # B N T C -> (B N) T C
 
             time_tokens = self.time_blocks[i](time_tokens)
@@ -101,7 +100,7 @@ class EfficientUpdateFormer(nn.Module):
             tokens = time_tokens.reshape((B, N, T, -1))  # (B N) T C -> B N T C
     
             if self.add_space_attn and (i % (len(self.time_blocks) // len(self.space_virtual_blocks)) == 0):
-                space_tokens = (tokens.permute((0, 2, 1, 3))+0.0).reshape((B * T, N, -1))  # B N T C -> (B T) N C
+                space_tokens = tokens.permute((0, 2, 1, 3)).reshape((B * T, N, -1))  # B N T C -> (B T) N C
                 point_tokens = space_tokens[:, : N - self.num_virtual_tracks, :]
                 virtual_tokens = space_tokens[:, N - self.num_virtual_tracks :, :]
 
@@ -216,7 +215,7 @@ class CorrBlock:
             out_pyramid.append(corrs_sampled)
 
         # Concatenate all levels along the last dimension.
-        out = ops.cat(out_pyramid, dim=-1)+0.0
+        out = ops.cat(out_pyramid, dim=-1)
         return out
 
 

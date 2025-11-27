@@ -14,7 +14,7 @@ execute_process(COMMAND python3 -m pybind11 --cmakedir
   OUTPUT_VARIABLE __pybind_path
   OUTPUT_STRIP_TRAILING_WHITESPACE)
 
-find_package(Python COMPONENTS Development Interpreter REQUIRED)
+find_package(Python 3.11 COMPONENTS Development Interpreter REQUIRED)
 
 message(STATUS "Using Python executable: ${Python_EXECUTABLE}")
 message(STATUS "Python include dirs: ${Python_INCLUDE_DIRS}")
@@ -66,6 +66,7 @@ if(CUDA_FOUND)
 
   include_directories(SYSTEM ${CUDA_INCLUDE_DIRS})
   list(APPEND LINKER_LIBS ${CUDA_CUDART_LIBRARY})
+  list(APPEND LINKER_LIBS ${CUDA_CUBLAS_LIBRARIES})
 
   # invoke nvidia smi to detect if we really have a GPU
   execute_process(COMMAND "nvidia-smi" ERROR_QUIET  RESULT_VARIABLE NV_RET)

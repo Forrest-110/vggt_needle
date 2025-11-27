@@ -82,6 +82,10 @@ class BackendDevice:
         np_arr = np.arange(start, stop, step, dtype=dtype)
         return NDArray(np_arr, device=self)
 
+    def cuda_synchronize(self):
+        if self.name == "cuda" and self.mod is not None:
+            self.mod.cuda_synchronize()
+
 
 def cuda() -> BackendDevice:
     """Return cuda device"""
@@ -111,6 +115,8 @@ def all_devices() -> list[BackendDevice]:
     """return a list of all available devices"""
     return [cpu(), cuda(), cpu_numpy()]
 
+def _as_i32_list(x: tuple[int, ...]) -> list[int]:
+    return [int(d) for d in x]
 
 class NDArray:
     """A generic ND array class that may contain multipe different backends
@@ -136,7 +142,7 @@ class NDArray:
             # create a copy of existing NDArray
             if device is None:
                 device = other.device
-            self._init(other.to(device) + 0.0)  # this creates a copy
+            self._init(other.to(device))  # this creates a copy
         elif isinstance(other, np.ndarray):
             # create copy from numpy array
             device = device if device is not None else default_device()
@@ -239,12 +245,35 @@ class NDArray:
         )
 
     def is_compact(self) -> bool:
-        """Return true if array is compact in memory and internal size equals product
-        of the shape dimensions"""
-        return (
-            self._strides == self.compact_strides(self._shape)
-            and prod(self.shape) == self._handle.size
-        )
+        # """Return true if array is compact in memory and internal size equals product
+        # of the shape dimensions"""
+        # return (
+        #     self._strides == self.compact_strides(self._shape)
+        #     and prod(self.shape) == self._handle.size
+        # )
+
+        """
+        Logical contiguity: strides describe a standard row-major layout
+        for `self.shape` (within the backing buffer), regardless of how
+        big the underlying buffer is.
+        """
+        if self.size == 0:
+            return True
+
+        # Check row-major stride pattern from the last dim backwards
+        expected = 1
+        for dim, stride in zip(reversed(self._shape), reversed(self._strides)):
+            if stride != expected:
+                return False
+            expected *= dim
+
+        # Also make sure the last element fits in the buffer
+        # max_index = offset + sum((dim_i - 1) * stride_i)
+        max_index = self._offset
+        for dim, stride in zip(self._shape, self._strides):
+            if dim > 0:
+                max_index += (dim - 1) * stride
+        return max_index < self._handle.size
 
     def compact(self) -> "NDArray":
         """Convert a matrix to be compact"""
@@ -305,7 +334,8 @@ class NDArray:
         if prod(resolved_shape) != self.size:
             raise ValueError(f"Trying to reshape {self.size} to {resolved_shape}")
         if not self.is_compact():
-            raise ValueError()
+            # raise ValueError()
+            self = self.compact()
 
         new_strides = NDArray.compact_strides(resolved_shape)
         return NDArray.make(
@@ -423,7 +453,7 @@ class NDArray:
         if start is None:
             start = 0
         if start < 0:
-            start = self.shape[dim]
+            start = self.shape[dim] + start
         if stop is None:
             stop = self.shape[dim]
         if stop < 0:
@@ -532,12 +562,111 @@ class NDArray:
         """Run either an elementwise or scalar version of a function,
         depending on whether "other" is an NDArray or scalar
         """
+        # out = NDArray.make(self.shape, device=self.device)
+        # if isinstance(other, NDArray):
+        #     assert self.shape == other.shape, f"operation needs two equal-sized arrays, get {self.shape} and {other.shape}"
+        #     ewise_func(self.compact()._handle, other.compact()._handle, out._handle)
+        # else:
+        #     scalar_func(self.compact()._handle, other, out._handle)
+        # return out
         out = NDArray.make(self.shape, device=self.device)
+
+        backend = self.device
+        use_strided = False
+        ewise_strided = None
+        scalar_strided = None
+
+        # Try to map ewise_func / scalar_func to *_strided names
+        try:
+            func_name = ewise_func.__name__
+            # e.g. "ewise_add" -> "ewise_add_strided"
+            ewise_strided = getattr(backend, func_name + "_strided", None)
+            if ewise_strided is not None:
+                scalar_name = scalar_func.__name__  # e.g. "scalar_add"
+                scalar_strided = getattr(backend, scalar_name + "_strided", None)
+                if scalar_strided is not None:
+                    use_strided = True
+        except AttributeError:
+            use_strided = False
+
+        if use_strided:
+            shape_i32 = _as_i32_list(self.shape)
+            out_strides_i32 = _as_i32_list(out.strides)
+
+            if isinstance(other, NDArray):
+                assert (
+                    self.shape == other.shape
+                ), f"operation needs two equal-sized arrays, got {self.shape} and {other.shape}"
+                assert (
+                    self.device == other.device
+                ), "ewise ops across devices are not supported; move arrays to same device first"
+
+                a_strides_i32 = _as_i32_list(self.strides)
+                b_strides_i32 = _as_i32_list(other.strides)
+
+                # strided binary kernel
+                ewise_strided(
+                    self._handle,
+                    shape_i32,
+                    a_strides_i32,
+                    self._offset,
+                    other._handle,
+                    b_strides_i32,
+                    other._offset,
+                    out._handle,
+                    out_strides_i32,
+                    out._offset,
+                )
+            else:
+                # scalar version
+                a_strides_i32 = _as_i32_list(self.strides)
+                scalar_strided(
+                    self._handle,
+                    shape_i32,
+                    a_strides_i32,
+                    self._offset,
+                    float(other),
+                    out._handle,
+                    out_strides_i32,
+                    out._offset,
+                )
+            return out
+
+        # ------------- Fallback path (CPU / numpy) -------------
+        # Same as your previous implementation: compact first.
         if isinstance(other, NDArray):
-            assert self.shape == other.shape, f"operation needs two equal-sized arrays, get {self.shape} and {other.shape}"
-            ewise_func(self.compact()._handle, other.compact()._handle, out._handle)
+            assert (
+                self.shape == other.shape
+            ), f"operation needs two equal-sized arrays, got {self.shape} and {other.shape}"
+            assert (
+                self.device == other.device
+            ), "ewise ops across devices are not supported; move arrays to same device first"
+
+            a = self if self.is_compact() else self.compact()
+            b = other if other.is_compact() else other.compact()
+            ewise_func(a._handle, b._handle, out._handle)
         else:
-            scalar_func(self.compact()._handle, other, out._handle)
+            a = self if self.is_compact() else self.compact()
+            scalar_func(a._handle, other, out._handle)
+
+        return out
+
+        # Fast path: if both are NDArrays, they must be on same device
+        if isinstance(other, NDArray):
+            assert (
+                self.shape == other.shape
+            ), f"operation needs two equal-sized arrays, got {self.shape} and {other.shape}"
+            assert (
+                self.device == other.device
+            ), "ewise ops across devices are not supported; move arrays to same device first"
+
+            a = self if self.is_compact() else self.compact()
+            b = other if other.is_compact() else other.compact()
+            ewise_func(a._handle, b._handle, out._handle)
+        else:
+            a = self if self.is_compact() else self.compact()
+            scalar_func(a._handle, other, out._handle)
+
         return out
 
     def __add__(self, other: Union["NDArray", float]) -> "NDArray":
@@ -570,7 +699,7 @@ class NDArray:
 
     def __pow__(self, other: float) -> "NDArray":
         out = NDArray.make(self.shape, device=self.device)
-        self.device.scalar_power(self.compact()._handle, other, out._handle)
+        self.device.scalar_power(self._handle, other, out._handle)
         return out
 
     def maximum(self, other: Union["NDArray", float]) -> "NDArray":
@@ -601,32 +730,32 @@ class NDArray:
 
     def pow(self, other) -> "NDArray":
         out = NDArray.make(self.shape, device=self.device)
-        self.device.ewise_pow(self.compact()._handle, other.compact()._handle, out._handle)
+        self.device.ewise_pow(self._handle, other._handle, out._handle)
         return out
 
     def log(self) -> "NDArray":
         out = NDArray.make(self.shape, device=self.device)
-        self.device.ewise_log(self.compact()._handle, out._handle)
+        self.device.ewise_log(self._handle, out._handle)
         return out
 
     def exp(self) -> "NDArray":
         out = NDArray.make(self.shape, device=self.device)
-        self.device.ewise_exp(self.compact()._handle, out._handle)
+        self.device.ewise_exp(self._handle, out._handle)
         return out
 
     def tanh(self) -> "NDArray":
         out = NDArray.make(self.shape, device=self.device)
-        self.device.ewise_tanh(self.compact()._handle, out._handle)
+        self.device.ewise_tanh(self._handle, out._handle)
         return out
     
     def sin(self) -> "NDArray":
         out = NDArray.make(self.shape, device=self.device)
-        self.device.ewise_sin(self.compact()._handle, out._handle)
+        self.device.ewise_sin(self._handle, out._handle)
         return out
     
     def cos(self) -> "NDArray":
         out = NDArray.make(self.shape, device=self.device)
-        self.device.ewise_cos(self.compact()._handle, out._handle)
+        self.device.ewise_cos(self._handle, out._handle)
         return out
 
     ### Matrix multiplication
@@ -651,36 +780,81 @@ class NDArray:
 
         m, n, p = self.shape[0], self.shape[1], other.shape[1]
 
-        # if the matrix is aligned, use tiled matrix multiplication
-        if hasattr(self.device, "matmul_tiled") and all(
-            d % self.device.__tile_size__ == 0 for d in (m, n, p)
-        ):
+        out = NDArray.make((m, p), device=self.device)
+        a = self if self.is_compact() else self.compact()
+        b = other if other.is_compact() else other.compact()
+        self.device.matmul(a._handle, b._handle, out._handle, m, n, p)
+        return out
 
-            def tile(a, tile):
-                return a.as_strided(
-                    (a.shape[0] // tile, a.shape[1] // tile, tile, tile),
-                    (a.shape[1] * tile, tile, a.shape[1], 1),
-                )
+        # # if the matrix is aligned, use tiled matrix multiplication
+        # if hasattr(self.device, "matmul_tiled") and all(
+        #     d % self.device.__tile_size__ == 0 for d in (m, n, p)
+        # ):
 
-            t = self.device.__tile_size__
-            a = tile(self.compact(), t).compact()
-            b = tile(other.compact(), t).compact()
-            out = NDArray.make((a.shape[0], b.shape[1], t, t), device=self.device)
-            self.device.matmul_tiled(a._handle, b._handle, out._handle, m, n, p)
+        #     def tile(a, tile):
+        #         return a.as_strided(
+        #             (a.shape[0] // tile, a.shape[1] // tile, tile, tile),
+        #             (a.shape[1] * tile, tile, a.shape[1], 1),
+        #         )
 
-            return (
-                out.permute((0, 2, 1, 3))
-                .compact()
-                .reshape((self.shape[0], other.shape[1]))
-            )
+        #     t = self.device.__tile_size__
+        #     a = tile(self.compact(), t).compact()
+        #     b = tile(other.compact(), t).compact()
+        #     out = NDArray.make((a.shape[0], b.shape[1], t, t), device=self.device)
+        #     self.device.matmul_tiled(a._handle, b._handle, out._handle, m, n, p)
 
-        else:
-            out = NDArray.make((m, p), device=self.device)
-            self.device.matmul(
-                self.compact()._handle, other.compact()._handle, out._handle, m, n, p
-            )
+        #     return (
+        #         out.permute((0, 2, 1, 3))
+        #         .compact()
+        #         .reshape((self.shape[0], other.shape[1]))
+        #     )
+
+        # else:
+        #     out = NDArray.make((m, p), device=self.device)
+        #     self.device.matmul(
+        #         self.compact()._handle, other.compact()._handle, out._handle, m, n, p
+        #     )
             
+        #     return out
+
+    def bmm(self, other: "NDArray") -> "NDArray":
+        """
+        Batched matrix multiplication: (B, M, N) @ (B, N, P) -> (B, M, P)
+
+        Uses a fast backend `matmul_batched` if available (CUDA cuBLAS),
+        otherwise falls back to looping over the batch and using `__matmul__`.
+        """
+        assert self.ndim == 3 and other.ndim == 3, "bmm expects 3D (batched) tensors"
+        B, M, N = self.shape
+        B2, N2, P = other.shape
+        assert B == B2, f"batch dims must match, got {B} and {B2}"
+        assert N == N2, f"inner dims must match, got {N} and {N2}"
+
+        # Place output on same device as self
+        out = NDArray.make((B, M, P), device=self.device)
+
+        # Compact views once
+        a = self if self.is_compact() else self.compact()
+        b = other if other.is_compact() else other.compact()
+
+        # Fast path: CUDA backend with matmul_batched (cuBLAS)
+        if hasattr(self.device, "matmul_batched"):
+            self.device.matmul_batched(
+                a._handle,
+                b._handle,
+                out._handle,
+                B,
+                M,
+                N,
+                P,
+            )
             return out
+
+        # Fallback: loop in Python, but each per-batch matmul can still be fast
+        for i in range(B):
+            # slice yields shape (M, N) / (N, P); @ uses backend matmul
+            out[i] = a[i] @ b[i]
+        return out
 
 
     def reduce_view_out(
@@ -736,12 +910,12 @@ class NDArray:
 
     def sum(self, axis: int | tuple[int, ...] | list[int] | None = None, keepdims: bool = False) -> "NDArray":
         view, out = self.reduce_view_out(axis, keepdims=keepdims)
-        self.device.reduce_sum(view.compact()._handle, out._handle, view.shape[-1])
+        self.device.reduce_sum(view._handle, out._handle, view.shape[-1])
         return out
 
     def max(self, axis: int | tuple[int, ...] | list[int] | None = None, keepdims: bool = False) -> "NDArray":
         view, out = self.reduce_view_out(axis, keepdims=keepdims)
-        self.device.reduce_max(view.compact()._handle, out._handle, view.shape[-1])
+        self.device.reduce_max(view._handle, out._handle, view.shape[-1])
         return out
 
     def flip(self, axes: tuple[int, ...]) -> "NDArray":
@@ -832,6 +1006,18 @@ class NDArray:
         # in-place max with 0.0: use same handle for input and output
         self.device.scalar_maximum(self._handle, 0.0, self._handle)
         return self
+
+    def softmax_lastdim(self) -> "NDArray":
+        """
+        Fused softmax over the last dimension, if the backend provides it.
+        Otherwise falls back to exp/sum path.
+        """
+        dim = self.shape[-1]
+        out = NDArray.make(self.shape, device=self.device)
+
+        x_c = self.compact()
+        self.device.softmax_lastdim(x_c._handle, out._handle, dim)
+        return out
 
 def array(a: Any, dtype: str = "float32", device: BackendDevice | None = None) -> NDArray:
     """Convenience methods to match numpy a bit more closely."""
@@ -969,3 +1155,67 @@ def where(cond: NDArray, x: NDArray | float, y: NDArray | float) -> NDArray:
 def relu_(a: NDArray) -> NDArray:
     # in-place relu
     return a.relu_()
+
+def bmm(a: NDArray, b: NDArray) -> NDArray:
+    """Convenience alias for batched matrix multiplication."""
+    return a.bmm(b)
+
+def flash_attention(q: NDArray, k: NDArray, v: NDArray) -> NDArray:
+    """
+    FlashAttention forward for Q,K,V shaped (B, H, N, D), CUDA only.
+    """
+    assert q.device.name == "cuda", "flash_attention only implemented on CUDA"
+    assert k.device == q.device and v.device == q.device
+    assert q.shape == k.shape == v.shape, "q,k,v must have same shape"
+    B, H, N, D = q.shape
+
+    out = NDArray.make((B, H, N, D), device=q.device)
+
+    qc = q if q.is_compact() else q.compact()
+    kc = k if k.is_compact() else k.compact()
+    vc = v if v.is_compact() else v.compact()
+
+    # Call into CUDA backend
+    q.device.flash_attention_forward(
+        qc._handle,
+        kc._handle,
+        vc._handle,
+        out._handle,
+        B, H, N, D,
+    )
+    return out
+
+
+def cuda_synchronize():
+    dev = cuda()
+    dev.cuda_synchronize()
+
+# import threading
+# from collections import defaultdict
+
+# # Per-thread current op name (set from autograd.TensorOp.__call__)
+# _thread_local = threading.local()
+
+# def set_current_op_name(name: str | None) -> None:
+#     _thread_local.current_op_name = name
+
+# def get_current_op_name() -> str | None:
+#     return getattr(_thread_local, "current_op_name", None)
+
+# # opname -> [num_compacts, total_elems_moved]
+# COMPACT_BY_OP: dict[str, list[int]] = defaultdict(lambda: [0, 0])
+
+# def reset_compact_stats() -> None:
+#     COMPACT_BY_OP.clear()
+
+# def print_compact_stats(top_k: int = 30) -> None:
+#     items = sorted(
+#         COMPACT_BY_OP.items(),
+#         key=lambda kv: kv[1][1],  # sort by total elems moved
+#         reverse=True,
+#     )
+#     print("\n=== NDArray compact() by TensorOp ===")
+#     for name, (cnt, elems) in items[:top_k]:
+#         print(f"{name:25s}: {cnt:6d} calls, {elems} elems")
+
+

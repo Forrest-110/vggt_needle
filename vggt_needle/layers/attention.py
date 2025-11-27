@@ -10,7 +10,7 @@
 import logging
 import os
 import warnings
-from needle import nn
+from needle import nn, ops
 from needle import Tensor
 
 class Attention(nn.Module):
@@ -48,14 +48,19 @@ class Attention(nn.Module):
             q = self.rope(q, pos)
             k = self.rope(k, pos)
 
-        q = q * self.scale
-        attn = q @ (k.transpose((-2, -1)) + 0.0)
-        
-        attn = attn.softmax()
-        
-        x = attn @ v
 
-        x = (x.transpose((1, 2))+ 0.0).reshape((B, N, C))
+        
+
+        q = q * self.scale
+
+        x = ops.flash_attention(q, k, v)
+        # attn = q @ k.transpose((-2, -1))
+        
+        # attn = attn.softmax()
+        
+        # x = attn @ v
+
+        x = x.transpose((1, 2)).reshape((B, N, C))
         
         x = self.proj(x)
 

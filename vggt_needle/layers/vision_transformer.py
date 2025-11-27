@@ -160,7 +160,7 @@ class DinoVisionTransformer(nn.Module):
             return self.pos_embed
         # raise NotImplementedError
         pos_embed = self.pos_embed
-        class_pos_embed = (pos_embed[:, 0, :]+0.0).reshape((pos_embed.shape[0], pos_embed.shape[-1]))
+        class_pos_embed = pos_embed[:, 0, :].reshape((pos_embed.shape[0], pos_embed.shape[-1]))
         patch_pos_embed = pos_embed[:, 1:, :]
         dim = x.shape[-1]
         w0 = w // self.patch_size
@@ -214,7 +214,7 @@ class DinoVisionTransformer(nn.Module):
             x_norm = self.norm(x)
             output.append(
                 {
-            "x_norm_clstoken": (x_norm[:, 0, :]+0.0).reshape((x_norm.shape[0], x_norm.shape[-1])),
+            "x_norm_clstoken": x_norm[:, 0, :].reshape((x_norm.shape[0], x_norm.shape[-1])),
             "x_norm_regtokens": x_norm[:, 1 : self.num_register_tokens + 1, :],
             "x_norm_patchtokens": x_norm[:, self.num_register_tokens + 1 :, :],
             "x_prenorm": x,
@@ -233,7 +233,7 @@ class DinoVisionTransformer(nn.Module):
             x = blk(x)
         x_norm = self.norm(x)
         return {
-            "x_norm_clstoken": (x_norm[:, 0, :]+0.0).reshape((x_norm.shape[0], x_norm.shape[-1])),
+            "x_norm_clstoken": x_norm[:, 0, :].reshape((x_norm.shape[0], x_norm.shape[-1])),
             "x_norm_regtokens": x_norm[:, 1 : self.num_register_tokens + 1, :],
             "x_norm_patchtokens": x_norm[:, self.num_register_tokens + 1 :, :],
             "x_prenorm": x,
@@ -285,7 +285,7 @@ class DinoVisionTransformer(nn.Module):
         if reshape:
             B, _, w, h = x.shape
             outputs = [
-                (out+0.0).reshape((B, w // self.patch_size, h // self.patch_size, -1)).permute((0, 3, 1, 2))
+                out.reshape((B, w // self.patch_size, h // self.patch_size, -1)).permute((0, 3, 1, 2))
                 for out in outputs
             ]
         if return_class_token:

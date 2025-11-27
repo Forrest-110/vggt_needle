@@ -424,6 +424,7 @@ CMakeFiles/ndarray_backend_cuda.dir/src/ndarray_backend_cuda_generated_ndarray_b
 CMakeFiles/ndarray_backend_cuda.dir/src/ndarray_backend_cuda_generated_ndarray_backend_cuda.cu.o: /usr/include/c++/11/cassert
 CMakeFiles/ndarray_backend_cuda.dir/src/ndarray_backend_cuda_generated_ndarray_backend_cuda.cu.o: /usr/include/c++/11/cctype
 CMakeFiles/ndarray_backend_cuda.dir/src/ndarray_backend_cuda_generated_ndarray_backend_cuda.cu.o: /usr/include/c++/11/cerrno
+CMakeFiles/ndarray_backend_cuda.dir/src/ndarray_backend_cuda_generated_ndarray_backend_cuda.cu.o: /usr/include/c++/11/cfloat
 CMakeFiles/ndarray_backend_cuda.dir/src/ndarray_backend_cuda_generated_ndarray_backend_cuda.cu.o: /usr/include/c++/11/chrono
 CMakeFiles/ndarray_backend_cuda.dir/src/ndarray_backend_cuda_generated_ndarray_backend_cuda.cu.o: /usr/include/c++/11/clocale
 CMakeFiles/ndarray_backend_cuda.dir/src/ndarray_backend_cuda_generated_ndarray_backend_cuda.cu.o: /usr/include/c++/11/cmath
@@ -534,6 +535,7 @@ CMakeFiles/ndarray_backend_cuda.dir/src/ndarray_backend_cuda_generated_ndarray_b
 CMakeFiles/ndarray_backend_cuda.dir/src/ndarray_backend_cuda_generated_ndarray_backend_cuda.cu.o: /usr/include/unistd.h
 CMakeFiles/ndarray_backend_cuda.dir/src/ndarray_backend_cuda_generated_ndarray_backend_cuda.cu.o: /usr/include/wchar.h
 CMakeFiles/ndarray_backend_cuda.dir/src/ndarray_backend_cuda_generated_ndarray_backend_cuda.cu.o: /usr/include/wctype.h
+CMakeFiles/ndarray_backend_cuda.dir/src/ndarray_backend_cuda_generated_ndarray_backend_cuda.cu.o: /usr/lib/gcc/x86_64-redhat-linux/11/include/float.h
 CMakeFiles/ndarray_backend_cuda.dir/src/ndarray_backend_cuda_generated_ndarray_backend_cuda.cu.o: /usr/lib/gcc/x86_64-redhat-linux/11/include/limits.h
 CMakeFiles/ndarray_backend_cuda.dir/src/ndarray_backend_cuda_generated_ndarray_backend_cuda.cu.o: /usr/lib/gcc/x86_64-redhat-linux/11/include/stdarg.h
 CMakeFiles/ndarray_backend_cuda.dir/src/ndarray_backend_cuda_generated_ndarray_backend_cuda.cu.o: /usr/lib/gcc/x86_64-redhat-linux/11/include/stddef.h
@@ -557,7 +559,14 @@ CMakeFiles/ndarray_backend_cuda.dir/src/ndarray_backend_cuda_generated_ndarray_b
 CMakeFiles/ndarray_backend_cuda.dir/src/ndarray_backend_cuda_generated_ndarray_backend_cuda.cu.o: /usr/local/cuda-12.4/include/crt/sm_80_rt.hpp
 CMakeFiles/ndarray_backend_cuda.dir/src/ndarray_backend_cuda_generated_ndarray_backend_cuda.cu.o: /usr/local/cuda-12.4/include/crt/sm_90_rt.h
 CMakeFiles/ndarray_backend_cuda.dir/src/ndarray_backend_cuda_generated_ndarray_backend_cuda.cu.o: /usr/local/cuda-12.4/include/crt/sm_90_rt.hpp
+CMakeFiles/ndarray_backend_cuda.dir/src/ndarray_backend_cuda_generated_ndarray_backend_cuda.cu.o: /usr/local/cuda-12.4/include/cuComplex.h
+CMakeFiles/ndarray_backend_cuda.dir/src/ndarray_backend_cuda_generated_ndarray_backend_cuda.cu.o: /usr/local/cuda-12.4/include/cublas_api.h
+CMakeFiles/ndarray_backend_cuda.dir/src/ndarray_backend_cuda_generated_ndarray_backend_cuda.cu.o: /usr/local/cuda-12.4/include/cublas_v2.h
+CMakeFiles/ndarray_backend_cuda.dir/src/ndarray_backend_cuda_generated_ndarray_backend_cuda.cu.o: /usr/local/cuda-12.4/include/cuda_bf16.h
+CMakeFiles/ndarray_backend_cuda.dir/src/ndarray_backend_cuda_generated_ndarray_backend_cuda.cu.o: /usr/local/cuda-12.4/include/cuda_bf16.hpp
 CMakeFiles/ndarray_backend_cuda.dir/src/ndarray_backend_cuda_generated_ndarray_backend_cuda.cu.o: /usr/local/cuda-12.4/include/cuda_device_runtime_api.h
+CMakeFiles/ndarray_backend_cuda.dir/src/ndarray_backend_cuda_generated_ndarray_backend_cuda.cu.o: /usr/local/cuda-12.4/include/cuda_fp16.h
+CMakeFiles/ndarray_backend_cuda.dir/src/ndarray_backend_cuda_generated_ndarray_backend_cuda.cu.o: /usr/local/cuda-12.4/include/cuda_fp16.hpp
 CMakeFiles/ndarray_backend_cuda.dir/src/ndarray_backend_cuda_generated_ndarray_backend_cuda.cu.o: /usr/local/cuda-12.4/include/cuda_runtime.h
 CMakeFiles/ndarray_backend_cuda.dir/src/ndarray_backend_cuda_generated_ndarray_backend_cuda.cu.o: /usr/local/cuda-12.4/include/cuda_runtime_api.h
 CMakeFiles/ndarray_backend_cuda.dir/src/ndarray_backend_cuda_generated_ndarray_backend_cuda.cu.o: /usr/local/cuda-12.4/include/device_atomic_functions.h
@@ -567,6 +576,9 @@ CMakeFiles/ndarray_backend_cuda.dir/src/ndarray_backend_cuda_generated_ndarray_b
 CMakeFiles/ndarray_backend_cuda.dir/src/ndarray_backend_cuda_generated_ndarray_backend_cuda.cu.o: /usr/local/cuda-12.4/include/driver_functions.h
 CMakeFiles/ndarray_backend_cuda.dir/src/ndarray_backend_cuda_generated_ndarray_backend_cuda.cu.o: /usr/local/cuda-12.4/include/driver_types.h
 CMakeFiles/ndarray_backend_cuda.dir/src/ndarray_backend_cuda_generated_ndarray_backend_cuda.cu.o: /usr/local/cuda-12.4/include/library_types.h
+CMakeFiles/ndarray_backend_cuda.dir/src/ndarray_backend_cuda_generated_ndarray_backend_cuda.cu.o: /usr/local/cuda-12.4/include/nv/detail/__preprocessor
+CMakeFiles/ndarray_backend_cuda.dir/src/ndarray_backend_cuda_generated_ndarray_backend_cuda.cu.o: /usr/local/cuda-12.4/include/nv/detail/__target_macros
+CMakeFiles/ndarray_backend_cuda.dir/src/ndarray_backend_cuda_generated_ndarray_backend_cuda.cu.o: /usr/local/cuda-12.4/include/nv/target
 CMakeFiles/ndarray_backend_cuda.dir/src/ndarray_backend_cuda_generated_ndarray_backend_cuda.cu.o: /usr/local/cuda-12.4/include/sm_20_atomic_functions.h
 CMakeFiles/ndarray_backend_cuda.dir/src/ndarray_backend_cuda_generated_ndarray_backend_cuda.cu.o: /usr/local/cuda-12.4/include/sm_20_atomic_functions.hpp
 CMakeFiles/ndarray_backend_cuda.dir/src/ndarray_backend_cuda_generated_ndarray_backend_cuda.cu.o: /usr/local/cuda-12.4/include/sm_20_intrinsics.h
@@ -607,6 +619,7 @@ ndarray_backend_cuda_EXTERNAL_OBJECTS = \
 /home/yifeizh3/workspace/vggt_needle/needle/backend_ndarray/ndarray_backend_cuda.cpython-311-x86_64-linux-gnu.so: /usr/local/cuda-12.4/lib64/libcudart_static.a
 /home/yifeizh3/workspace/vggt_needle/needle/backend_ndarray/ndarray_backend_cuda.cpython-311-x86_64-linux-gnu.so: /usr/lib64/librt.a
 /home/yifeizh3/workspace/vggt_needle/needle/backend_ndarray/ndarray_backend_cuda.cpython-311-x86_64-linux-gnu.so: /usr/local/cuda-12.4/lib64/libcudart.so
+/home/yifeizh3/workspace/vggt_needle/needle/backend_ndarray/ndarray_backend_cuda.cpython-311-x86_64-linux-gnu.so: /usr/local/cuda-12.4/lib64/libcublas.so
 /home/yifeizh3/workspace/vggt_needle/needle/backend_ndarray/ndarray_backend_cuda.cpython-311-x86_64-linux-gnu.so: CMakeFiles/ndarray_backend_cuda.dir/link.txt
 	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --bold --progress-dir=/home/yifeizh3/workspace/vggt_needle/needle/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_2) "Linking CXX shared module /home/yifeizh3/workspace/vggt_needle/needle/backend_ndarray/ndarray_backend_cuda.cpython-311-x86_64-linux-gnu.so"
 	$(CMAKE_COMMAND) -E cmake_link_script CMakeFiles/ndarray_backend_cuda.dir/link.txt --verbose=$(VERBOSE)

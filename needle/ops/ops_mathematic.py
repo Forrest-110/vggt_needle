@@ -145,10 +145,12 @@ class Transpose(TensorOp):
 
     def compute(self, a):
         if self.axes is None:
-            return array_api.swapaxes(a, -1, -2)
+            out = array_api.swapaxes(a, -1, -2)
         else:
             i, j = self.axes
-            return array_api.swapaxes(a, i, j)
+            out = array_api.swapaxes(a, i, j)
+        # materialize once; avoid 1000 later compacts
+        return out #.compact()
 
     def gradient(self, out_grad, node):
         if self.axes is None:
@@ -161,44 +163,66 @@ class Transpose(TensorOp):
 def transpose(a, axes=None):
     return Transpose(axes)(a)
 
+# class Permute(TensorOp):
+#     """
+#     Permute dimensions using repeated transpose operations.
+#     Equivalent to PyTorch's tensor.permute(dims).
+
+#     Example:
+#         x: (B, H, N, D)
+#         permute dims=(0, 2, 1, 3)
+#         -> (B, N, H, D)
+#     """
+#     def __init__(self, dims: tuple):
+#         assert isinstance(dims, (list, tuple)), "dims must be a tuple or list"
+#         self.dims = tuple(dims)
+
+#     def compute(self, a):
+#         # apply pairwise transposes to reach target permutation
+#         out = a
+#         current_order = list(range(out.ndim))
+
+#         for i, target_axis in enumerate(self.dims):
+#             j = current_order.index(target_axis)
+#             if i != j:
+#                 # swap axis i and j
+#                 out = array_api.swapaxes(out, i, j)
+#                 current_order[i], current_order[j] = current_order[j], current_order[i]
+
+#         return out
+
+#     def gradient(self, out_grad, node):
+#         # inverse permutation: dims^{-1}
+#         dims = self.dims
+#         inv = [0] * len(dims)
+#         for i, d in enumerate(dims):
+#             inv[d] = i
+
+#         return Permute(tuple(inv))(out_grad)
+
 class Permute(TensorOp):
     """
-    Permute dimensions using repeated transpose operations.
-    Equivalent to PyTorch's tensor.permute(dims).
-
+    Permute dimensions like PyTorch's tensor.permute(dims).
     Example:
         x: (B, H, N, D)
-        permute dims=(0, 2, 1, 3)
-        -> (B, N, H, D)
+        dims=(0, 2, 1, 3) -> (B, N, H, D)
     """
     def __init__(self, dims: tuple):
         assert isinstance(dims, (list, tuple)), "dims must be a tuple or list"
         self.dims = tuple(dims)
 
     def compute(self, a):
-        # apply pairwise transposes to reach target permutation
-        out = a
-        current_order = list(range(out.ndim))
-
-        for i, target_axis in enumerate(self.dims):
-            j = current_order.index(target_axis)
-            if i != j:
-                # swap axis i and j
-                out = array_api.swapaxes(out, i, j)
-                current_order[i], current_order[j] = current_order[j], current_order[i]
-
-        return out
+        # single permute call on the NDArray backend (fast, no Python loop)
+        return a.permute(self.dims)#.compact()
 
     def gradient(self, out_grad, node):
-        # inverse permutation: dims^{-1}
+        # inverse permutation dims^{-1}
         dims = self.dims
         inv = [0] * len(dims)
         for i, d in enumerate(dims):
             inv[d] = i
-
         return Permute(tuple(inv))(out_grad)
-
-
+    
 def permute(a, dims):
     return Permute(dims)(a)
 
@@ -210,7 +234,7 @@ class Reshape(TensorOp):
         return array_api.reshape(a, self.shape)
 
     def gradient(self, out_grad, node):
-        out_grad = out_grad + 0.0
+        out_grad = out_grad
         (a,) = node.inputs
         return (reshape(out_grad, a.shape),)
 
@@ -224,7 +248,9 @@ class BroadcastTo(TensorOp):
         self.shape = shape
 
     def compute(self, a):
-        return array_api.broadcast_to(a, self.shape)
+        view = array_api.broadcast_to(a, self.shape)
+        # On GPU, cost of one materialization << repeated compactions later
+        return view#.compact()
 
     def gradient(self, out_grad, node):
         (a,) = node.inputs
@@ -286,12 +312,134 @@ def summation(a, axes=None):
     return Summation(axes)(a)
 
 
+# class MatMul(TensorOp):
+#     def compute(self, a, b):
+        
+#         if len(a.shape) == 2:
+#             a = a.reshape((1, a.shape[0], a.shape[1]))
+#         if len(b.shape) == 2:
+#             b = b.reshape((1, b.shape[0], b.shape[1]))
+
+#         a_shape = a.shape
+#         b_shape = b.shape
+
+#         a_batch = a_shape[:-2]
+#         b_batch = b_shape[:-2]
+        
+#         if len(a_batch) < len(b_batch):
+#             pad = (1,) * (len(b_batch) - len(a_batch))
+#             a = a.reshape(pad + a_shape)
+#             a_shape = a.shape
+#             a_batch = a_shape[:-2]
+#         elif len(b_batch) < len(a_batch):
+#             pad = (1,) * (len(a_batch) - len(b_batch))
+#             b = b.reshape(pad + b_shape)
+#             b_shape = b.shape
+#             b_batch = b_shape[:-2]
+        
+#         out_batch = []
+#         for da, db in zip(a_batch, b_batch):
+#             if da == 1:
+#                 out_batch.append(db)
+#             elif db == 1:
+#                 out_batch.append(da)
+#             elif da == db:
+#                 out_batch.append(da)
+#             else:
+#                 raise ValueError(
+#                     f"matmul batch dims not broadcastable: {a_shape} vs {b_shape}"
+#                 )
+#         out_batch = tuple(out_batch)
+
+#         if a.shape[:-2] != out_batch:
+#             a = a.broadcast_to(out_batch + a.shape[-2:]).compact()
+#         if b.shape[:-2] != out_batch:
+#             b = b.broadcast_to(out_batch + b.shape[-2:]).compact()
+
+#         *batch, m, k = a.shape
+#         *_, k2, n = b.shape
+#         assert k == k2, f"Incompatible matmul shapes: {a.shape} @ {b.shape}"
+
+#         B = 1
+#         for d in batch:
+#             B *= d
+
+#         a2 = a.reshape((B, m, k))
+        
+#         b2 = b.reshape((B, k, n))
+
+#         out2 = array_api.empty((B, m, n), device=a2.device)
+#         for i in range(B):
+#             out2[i, :, :] = (a2[i, :, :].compact().reshape((m, k)) @ b2[i, :, :].compact().reshape((k, n))).reshape((1, m, n))   # (m, n)
+
+#         out = out2.reshape(tuple(batch) + (m, n))
+#         return out
+
+#     def gradient(self, out_grad, node):
+#         a, b = node.inputs
+#         grad_a = matmul(out_grad, Transpose((-1, -2))(b))
+#         grad_b = matmul(Transpose((-1, -2))(a), out_grad)
+#         def sum_to_shape(t, target_shape):
+#             t_shape = t.shape
+#             lead = len(t_shape) - len(target_shape)
+#             if lead > 0:
+#                 t = summation(t, axes=tuple(range(lead)))
+#                 t_shape = t.shape
+#             reduce_axes = []
+#             for i, (td, sd) in enumerate(zip(t_shape, target_shape)):
+#                 if sd == 1 and td != 1:
+#                     reduce_axes.append(i)
+#             if reduce_axes:
+#                 t = summation(t, axes=tuple(reduce_axes))
+#             if t.shape != target_shape:
+#                 t = reshape(t, target_shape)
+#             return t
+
+#         grad_a = sum_to_shape(grad_a, a.shape)
+#         grad_b = sum_to_shape(grad_b, b.shape)
+
+#         return grad_a, grad_b
+
+
+# def matmul(a, b):
+#     return MatMul()(a, b)
+
 class MatMul(TensorOp):
     def compute(self, a, b):
-        
-        if len(a.shape) == 2:
+        """
+        General matmul with broadcasting over leading (batch) dims.
+
+        Fast paths:
+        - If both inputs are 2D: directly use a @ b.
+        - If both are 3D with matching batch dim (B, M, K) @ (B, K, N):
+          use NDArray.bmm directly (fast cuBLAS batched GEMM on CUDA).
+
+        Fallback:
+        - For higher-rank inputs or batch broadcasting, follow numpy.matmul
+          semantics: broadcast batch dims, then flatten to (B, M, K) and
+          call NDArray.bmm once.
+        """
+        # --------- Fast path 1: pure 2D matmul ---------
+        if a.ndim == 2 and b.ndim == 2:
+            # NDArray.__matmul__ already uses device.matmul (cuBLAS on CUDA)
+            return a @ b
+
+        # --------- Fast path 2: simple batched 3D matmul (B, M, K) @ (B, K, N) ---------
+        if a.ndim == 3 and b.ndim == 3 and a.shape[0] == b.shape[0]:
+            B, M, K = a.shape
+            B2, K2, N = b.shape
+            assert K == K2, f"Incompatible matmul shapes: {a.shape} @ {b.shape}"
+
+            a_c = a if a.is_compact() else a.compact()
+            b_c = b if b.is_compact() else b.compact()
+            return array_api.bmm(a_c, b_c)  # (B, M, N)
+
+        # --------- General path: arbitrary rank + broadcasting ---------
+
+        # Ensure at least 3D: (..., M, K) and (..., K, N)
+        if a.ndim == 2:
             a = a.reshape((1, a.shape[0], a.shape[1]))
-        if len(b.shape) == 2:
+        if b.ndim == 2:
             b = b.reshape((1, b.shape[0], b.shape[1]))
 
         a_shape = a.shape
@@ -299,7 +447,8 @@ class MatMul(TensorOp):
 
         a_batch = a_shape[:-2]
         b_batch = b_shape[:-2]
-        
+
+        # Broadcast batch dims (like numpy.matmul)
         if len(a_batch) < len(b_batch):
             pad = (1,) * (len(b_batch) - len(a_batch))
             a = a.reshape(pad + a_shape)
@@ -310,7 +459,7 @@ class MatMul(TensorOp):
             b = b.reshape(pad + b_shape)
             b_shape = b.shape
             b_batch = b_shape[:-2]
-        
+
         out_batch = []
         for da, db in zip(a_batch, b_batch):
             if da == 1:
@@ -325,6 +474,7 @@ class MatMul(TensorOp):
                 )
         out_batch = tuple(out_batch)
 
+        # Actually broadcast to out_batch if necessary
         if a.shape[:-2] != out_batch:
             a = a.broadcast_to(out_batch + a.shape[-2:]).compact()
         if b.shape[:-2] != out_batch:
@@ -334,25 +484,34 @@ class MatMul(TensorOp):
         *_, k2, n = b.shape
         assert k == k2, f"Incompatible matmul shapes: {a.shape} @ {b.shape}"
 
+        # If no batch dims after broadcasting, just do 2D matmul
+        if len(batch) == 0:
+            a2 = a if a.is_compact() else a.compact()
+            b2 = b if b.is_compact() else b.compact()
+            return a2.reshape((m, k)) @ b2.reshape((k, n))
+
+        # Flatten broadcasted batch dims into a single B, then call fast bmm:
+        # a2: (B, M, K), b2: (B, K, N)
         B = 1
         for d in batch:
             B *= d
 
-        a2 = a.reshape((B, m, k))
-        
-        b2 = b.reshape((B, k, n))
+        a2 = (a if a.is_compact() else a.compact()).reshape((B, m, k))
+        b2 = (b if b.is_compact() else b.compact()).reshape((B, k, n))
 
-        out2 = array_api.empty((B, m, n), device=a2.device)
-        for i in range(B):
-            out2[i, :, :] = (a2[i, :, :].compact().reshape((m, k)) @ b2[i, :, :].compact().reshape((k, n))).reshape((1, m, n))   # (m, n)
+        out2 = array_api.bmm(a2, b2)  # (B, M, N)
 
+        # Reshape back to original broadcasted batch shape
         out = out2.reshape(tuple(batch) + (m, n))
         return out
 
     def gradient(self, out_grad, node):
         a, b = node.inputs
+
+        # Standard matmul gradient rules with broadcasting
         grad_a = matmul(out_grad, Transpose((-1, -2))(b))
         grad_b = matmul(Transpose((-1, -2))(a), out_grad)
+
         def sum_to_shape(t, target_shape):
             t_shape = t.shape
             lead = len(t_shape) - len(target_shape)
@@ -377,7 +536,6 @@ class MatMul(TensorOp):
 
 def matmul(a, b):
     return MatMul()(a, b)
-
 
 class Negate(TensorOp):
     def compute(self, a):
@@ -659,9 +817,74 @@ class Conv(TensorOp):
 
     #     return Y.compact()
 
+    # def compute(self, A, B):
+    #     """
+    #     A: [N, H, W, C_in]
+    #     B: [K, K, C_in, C_out]
+    #     Returns:
+    #         Y: [N, H_out, W_out, C_out]
+    #     """
+    #     s = self.stride
+    #     p = self.padding
+
+    #     N, H, W, C_in = A.shape
+    #     K, K2, C_in_w, C_out = B.shape
+    #     assert K == K2
+    #     assert C_in == C_in_w
+
+    #     # Padding
+    #     if p > 0:
+    #         # pad along H and W only: ((before_N, after_N), (before_H, after_H), ...)
+    #         A_pad = A.pad(((0, 0), (p, p), (p, p), (0, 0)))
+    #     else:
+    #         A_pad = A
+
+    #     Hp, Wp = A_pad.shape[1], A_pad.shape[2]
+    #     H_out = (Hp - K) // s + 1
+    #     W_out = (Wp - K) // s + 1
+
+    #     # Output
+    #     Y = array_api.full((N, H_out, W_out, C_out), 0.0, device=A.device)
+
+    #     # Compute convolution via per-(i,j) GEMM:
+    #     #   For each kernel offset (i, j),
+    #     #   A_ij: [N, H_out, W_out, C_in] -> [N*H_out*W_out, C_in]
+    #     #   W_ij: [C_in, C_out]
+    #     #   contrib = A_ij_flat @ W_ij  -> [N*H_out*W_out, C_out]
+    #     #   reshape contrib to [N, H_out, W_out, C_out] and accumulate.
+    #     for i in range(K):
+    #         h_start = i
+    #         h_end = h_start + H_out * s
+    #         # Stride in height
+    #         A_i = A_pad[:, h_start:h_end:s, :, :]  # [N, H_out, Wp, C_in]
+
+    #         for j in range(K):
+    #             w_start = j
+    #             w_end = w_start + W_out * s
+
+    #             # [N, H_out, W_out, C_in]
+    #             A_ij = A_i[:, :, w_start:w_end:s, :]
+
+    #             # Flatten spatial + batch dims into one matrix
+    #             # Shape: [N * H_out * W_out, C_in]
+    #             A_ij_flat = A_ij.compact().reshape((N * H_out * W_out, C_in))
+
+    #             # Corresponding kernel slice: [C_in, C_out]
+    #             W_ij = B[i, j, :, :].compact().reshape((C_in, C_out))
+
+    #             # Matrix multiply: [N*H_out*W_out, C_out]
+    #             contrib_flat = A_ij_flat @ W_ij
+    #             # Back to NHWC
+    #             contrib = contrib_flat.reshape((N, H_out, W_out, C_out))
+
+    #             # Accumulate
+    #             Y = Y + contrib
+
+    #     return Y.compact()
+
     def compute(self, A, B):
         """
-        A: [N, H, W, C_in]
+        A: [N, H, W, C_in] (NHWC)
         B: [K, K, C_in, C_out]
         Returns:
             Y: [N, H_out, W_out, C_out]
@@ -674,60 +897,38 @@ class Conv(TensorOp):
         assert K == K2
         assert C_in == C_in_w
 
-        # Padding
-        if p > 0:
-            # pad along H and W only: ((before_N, after_N), (before_H, after_H), ...)
-            A_pad = A.pad(((0, 0), (p, p), (p, p), (0, 0)))
-        else:
-            A_pad = A
-
-        Hp, Wp = A_pad.shape[1], A_pad.shape[2]
+        # output spatial dims (same formula as before)
+        Hp = H + 2 * p
+        Wp = W + 2 * p
         H_out = (Hp - K) // s + 1
         W_out = (Wp - K) // s + 1
 
-        # Output
-        Y = array_api.full((N, H_out, W_out, C_out), 0.0, device=A.device)
+        Y = array_api.empty((N, H_out, W_out, C_out), device=A.device)
 
-        # Compute convolution via per-(i,j) GEMM:
-        #   For each kernel offset (i, j),
-        #   A_ij: [N, H_out, W_out, C_in] -> [N*H_out*W_out, C_in]
-        #   W_ij: [C_in, C_out]
-        #   contrib = A_ij_flat @ W_ij  -> [N*H_out*W_out, C_out]
-        #   reshape contrib to [N, H_out, W_out, C_out] and accumulate.
-        for i in range(K):
-            h_start = i
-            h_end = h_start + H_out * s
-            # Stride in height
-            A_i = A_pad[:, h_start:h_end:s, :, :]  # [N, H_out, Wp, C_in]
+        # Make sure we pass compact NHWC buffers to CUDA
+        A_c = A if A.is_compact() else A.compact()
+        B_c = B if B.is_compact() else B.compact()
 
-            for j in range(K):
-                w_start = j
-                w_end = w_start + W_out * s
-
-                # [N, H_out, W_out, C_in]
-                A_ij = A_i[:, :, w_start:w_end:s, :]
-
-                # Flatten spatial + batch dims into one matrix
-                # Shape: [N * H_out * W_out, C_in]
-                A_ij_flat = A_ij.compact().reshape((N * H_out * W_out, C_in))
-
-                # Corresponding kernel slice: [C_in, C_out]
-                W_ij = B[i, j, :, :].compact().reshape((C_in, C_out))
-
-                # Matrix multiply: [N*H_out*W_out, C_out]
-                contrib_flat = A_ij_flat @ W_ij
-                # Back to NHWC
-                contrib = contrib_flat.reshape((N, H_out, W_out, C_out))
-
-                # Accumulate
-                Y = Y + contrib
-
-        return Y.compact()
+        # Call fused kernel through backend
+        A.device.conv2d(
+            A_c._handle,
+            B_c._handle,
+            Y._handle,
+            N,
+            H,
+            W,
+            C_in,
+            K,
+            C_out,
+            s,
+            p,
+        )
+        return Y
 
 
     def gradient(self, out_grad, node):
-
-        out_grad = out_grad + 0.0
+        raise NotImplementedError
+        out_grad = out_grad 
         X, W = node.inputs
         s, p = self.stride, self.padding
         K, _, C_in, C_out = W.shape
@@ -768,13 +969,18 @@ class ConvTranspose(TensorOp):
 
     def compute(self, A, B):
         """
-        A: (N, H_in, W_in, C_out)   -- acts like 'grad output' of Conv
-        B: (K, K, C_in, C_out)      -- same layout as Conv weights
+        A: (N, H_in, W_in, C_out)   -- NDArray
+        B: (K, K, C_in, C_out)      -- NDArray
         Returns:
             Y: (N, H_out, W_out, C_in)
         where:
             H_out = (H_in - 1) * stride - 2 * padding + K
             W_out = (W_in - 1) * stride - 2 * padding + K
+
+        On CUDA:
+            uses fused ConvTranspose2d kernel (no Python loops).
+        On CPU/numpy:
+            falls back to the original naive implementation.
         """
         s = self.stride
         p = self.padding
@@ -787,36 +993,29 @@ class ConvTranspose(TensorOp):
         H_out = (H_in - 1) * s - 2 * p + K
         W_out = (W_in - 1) * s - 2 * p + K
 
-        Y = array_api.full((N, H_out, W_out, C_in), 0.0, device=A.device)
+        Y = array_api.empty((N, H_out, W_out, C_in), device=A.device)
 
-        # Naive but clear implementation:
-        # For each input position (ih, iw), spread its value to output
-        # positions according to stride and kernel.
-        for n in range(N):
-            for ih in range(H_in):
-                for iw in range(W_in):
-                    a_vec = A[n, ih, iw, :].compact()              # (C_out,)
-                    if a_vec is None:
-                        continue
-                    for kh in range(K):
-                        oh = ih * s - p + kh
-                        if oh < 0 or oh >= H_out:
-                            continue
-                        for kw in range(K):
-                            ow = iw * s - p + kw
-                            if ow < 0 or ow >= W_out:
-                                continue
-                            # B[kh, kw] : (C_in, C_out)
-                            W_ij = B[kh, kw, :, :]        # (C_in, C_out)
-                            # out_vec[c_in] = sum_c_out a_vec[c_out] * W_ij[c_in, c_out]
-                            # -> (C_in,)
-        
-                            prod = (W_ij * a_vec.reshape((1, C_out)).broadcast_to(W_ij.shape)).sum(axis=-1)
-                            Y[n, oh, ow, :] = Y[n, oh, ow, :] + prod.broadcast_to(Y[n, oh, ow, :].shape)
+        # ensure compact buffers
+        A_c = A if A.is_compact() else A.compact()
+        B_c = B if B.is_compact() else B.compact()
 
-        return Y.compact()
+        A.device.conv_transpose2d(
+            A_c._handle,
+            B_c._handle,
+            Y._handle,
+            N,
+            H_in,
+            W_in,
+            C_out,
+            K,
+            C_in,
+            s,
+            p,
+        )
+        return Y
 
     def gradient(self, out_grad, node):
+        raise NotImplementedError
         """
         Let forward be:  Z = ConvTranspose(stride=s, padding=p)(A, W)
         where:
@@ -865,6 +1064,111 @@ class ConvTranspose(TensorOp):
         dW = stack(dW_rows, axis=0)  # (K, K, C_in, C_out)
 
         return dA, dW
+
+# class ConvTranspose(TensorOp):
+#     def __init__(self, stride: Optional[int] = 1, padding: Optional[int] = 0):
+#         self.stride = stride
+#         self.padding = padding
+
+#     def compute(self, A, B):
+#         """
+#         A: (N, H_in, W_in, C_out)   -- acts like 'grad output' of Conv
+#         B: (K, K, C_in, C_out)      -- same layout as Conv weights
+#         Returns:
+#             Y: (N, H_out, W_out, C_in)
+#         where:
+#             H_out = (H_in - 1) * stride - 2 * padding + K
+#             W_out = (W_in - 1) * stride - 2 * padding + K
+#         """
+#         s = self.stride
+#         p = self.padding
+
+#         N, H_in, W_in, C_out = A.shape
+#         K, K2, C_in, C_out_w = B.shape
+#         assert K == K2 and C_out == C_out_w
+
+#         # Output spatial size (no output_padding)
+#         H_out = (H_in - 1) * s - 2 * p + K
+#         W_out = (W_in - 1) * s - 2 * p + K
+
+#         Y = array_api.full((N, H_out, W_out, C_in), 0.0, device=A.device)
+
+#         # Naive but clear implementation:
+#         # For each input position (ih, iw), spread its value to output
+#         # positions according to stride and kernel.
+#         for n in range(N):
+#             for ih in range(H_in):
+#                 for iw in range(W_in):
+#                     a_vec = A[n, ih, iw, :].compact()              # (C_out,)
+#                     if a_vec is None:
+#                         continue
+#                     for kh in range(K):
+#                         oh = ih * s - p + kh
+#                         if oh < 0 or oh >= H_out:
+#                             continue
+#                         for kw in range(K):
+#                             ow = iw * s - p + kw
+#                             if ow < 0 or ow >= W_out:
+#                                 continue
+#                             # B[kh, kw] : (C_in, C_out)
+#                             W_ij = B[kh, kw, :, :]        # (C_in, C_out)
+#                             # out_vec[c_in] = sum_c_out a_vec[c_out] * W_ij[c_in, c_out]
+#                             # -> (C_in,)
+        
+#                             prod = (W_ij * a_vec.reshape((1, C_out)).broadcast_to(W_ij.shape)).sum(axis=-1)
+#                             Y[n, oh, ow, :] = Y[n, oh, ow, :] + prod.broadcast_to(Y[n, oh, ow, :].shape)
+
+#         return Y.compact()
+
+#     def gradient(self, out_grad, node):
+#         """
+#         Let forward be:  Z = ConvTranspose(stride=s, padding=p)(A, W)
+#         where:
+#           A: (N, H_in,  W_in,  C_out)
+#           W: (K, K, C_in, C_out)
+#           Z: (N, H_out, W_out, C_in)
+
+#         By the adjoint relationship:
+#           <Conv(X, W), A> = <X, ConvTranspose(A, W)>
+
+#         We can reuse the same patterns as Conv.gradient:
+#           - dA is a Conv with W, s, p
+#           - dW uses the same selector-kernel trick as Conv.gradient,
+#             but with X = out_grad, out_grad = A.
+#         """
+#         A, W = node.inputs
+#         s, p = self.stride, self.padding
+
+#         # dA: regular conv with same W, stride, padding
+#         dA = conv(out_grad, W, stride=s, padding=p)
+
+#         # dW: reuse Conv's dW logic with X = out_grad, out_grad = A
+#         X = out_grad
+#         N, H, Wsp, _ = X.shape
+#         N2, Hout, Wout, Cout = A.shape
+#         K, _, C_in, C_out = W.shape
+#         assert N == N2 and Cout == C_out
+
+#         dW_rows = []
+#         for i in range(K):
+#             row = []
+#             for j in range(K):
+#                 E_ij = _build_selector_kernel_tensor(K, C_in, i, j, device=X.device)
+#                 T_ij = conv(X, E_ij, stride=s, padding=p)
+
+#                 T_e = reshape(T_ij, (N, Hout, Wout, C_in, 1)).broadcast_to(
+#                     (N, Hout, Wout, C_in, C_out)
+#                 )
+#                 G_e = reshape(A, (N, Hout, Wout, 1, C_out)).broadcast_to(
+#                     (N, Hout, Wout, C_in, C_out)
+#                 )
+
+#                 dW_ij = summation(T_e * G_e, axes=(0, 1, 2))
+#                 row.append(dW_ij)
+#             dW_rows.append(stack(row, axis=0))
+#         dW = stack(dW_rows, axis=0)
+
+#         return dA, dW
 
 
 def conv_transpose(a, b, stride=1, padding=0):
@@ -1006,7 +1310,7 @@ class Slice(TensorOp):
     def compute(self, a):
         # Convert Python indexing into explicit normalized slicing
         norm_idx = self._normalize_index(self.idx, a.shape)
-        return a[norm_idx]
+        return a[norm_idx].compact()
 
     def gradient(self, out_grad, node):
         """
@@ -1257,4 +1561,15 @@ class Chunk(TensorTupleOp):
 def chunk(a, chunks: int, dim: int = 0):
     return Chunk(chunks, dim)(a)
 
-    
+
+class FlashAttentionOp(TensorOp):
+    def compute(self, q: NDArray, k: NDArray, v: NDArray) -> NDArray:
+        # Expect q,k,v as (B, H, N, D)
+        return array_api.flash_attention(q, k, v)
+
+    def gradient(self, out_grad, node):
+        # Forward-only for now
+        raise NotImplementedError("FlashAttention backward not implemented")
+
+def flash_attention(q: Tensor, k: Tensor, v: Tensor) -> Tensor:
+    return FlashAttentionOp()(q, k, v)

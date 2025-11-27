@@ -73,7 +73,7 @@ def activate_head(out: Tensor, activation="norm_exp", conf_activation="expp1"):
 
     # Split into xyz (first C-1 channels) and confidence (last channel)
     xyz = fmap[:, :, :, :-1]
-    conf = (fmap[:, :, :, -1]+0.0).reshape((fmap.shape[0], fmap.shape[1], fmap.shape[2]))
+    conf = fmap[:, :, :, -1].reshape((fmap.shape[0], fmap.shape[1], fmap.shape[2]))
    
     if activation == "norm_exp":
         d = ops.clamp(ops.norm(xyz, dim=-1, keepdim=True).broadcast_to(xyz.shape), min_val=1e-8)

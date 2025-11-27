@@ -51,7 +51,7 @@ class LogSumExp(TensorOp):
         return lse
 
     def gradient(self, out_grad: Tensor, node: Tensor):
-        out_grad = out_grad + 0.0
+        out_grad = out_grad
         (Z,) = node.inputs
         in_shape = Z.shape
         ndim = len(in_shape)
@@ -81,12 +81,13 @@ def logsumexp(a: Tensor, axes: Optional[tuple] = None) -> Tensor:
 
 class Softmax(TensorOp):
     def compute(self, Z: NDArray) -> NDArray:
-        # Numerically stable softmax over the last dimension
-        z_max = Z.max(axis=-1, keepdims=True)
-        shifted = Z - z_max.broadcast_to(Z.shape)
-        exp_shifted = array_api.exp(shifted)
-        denom = array_api.sum(exp_shifted, axis=-1, keepdims=True).broadcast_to(exp_shifted.shape)
-        return exp_shifted / denom
+        # # Numerically stable softmax over the last dimension
+        # z_max = Z.max(axis=-1, keepdims=True)
+        # shifted = Z - z_max.broadcast_to(Z.shape)
+        # exp_shifted = array_api.exp(shifted)
+        # denom = array_api.sum(exp_shifted, axis=-1, keepdims=True).broadcast_to(exp_shifted.shape)
+        # return exp_shifted / denom
+        return Z.softmax_lastdim()
 
     def gradient(self, out_grad: Tensor, node: Tensor):
         """

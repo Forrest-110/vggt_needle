@@ -52,7 +52,7 @@ def make_sincos_pos_embed(embed_dim: int, pos: Tensor, omega_0: float = 100) -> 
     base =  init.constant(*(omega.shape), c=omega_0, device=device)
     omega = (base**omega)**-1  # (D/2,)
 
-    pos = (pos+0.0).reshape((-1,))  # (M,)
+    pos = pos.reshape((-1,))  # (M,)
     pos_exp = ops.reshape(pos, (pos.shape[0], 1)).broadcast_to((pos.shape[0], half))
     omega_exp = ops.reshape(omega, (1, half)).broadcast_to((pos.shape[0], half))
     out = pos_exp * omega_exp  # (M, D/2)

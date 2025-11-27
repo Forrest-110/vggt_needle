@@ -84,7 +84,7 @@ class CameraHead(nn.Module):
         tokens = aggregated_tokens_list[-1]
 
         # Extract the camera tokens
-        pose_tokens = (tokens[:, :, 0, :]+0.0).reshape((tokens.shape[0], tokens.shape[1], tokens.shape[-1]))
+        pose_tokens = tokens[:, :, 0, :].reshape((tokens.shape[0], tokens.shape[1], tokens.shape[-1]))
         pose_tokens = self.token_norm(pose_tokens)
 
         pred_pose_enc_list = self.trunk_fn(pose_tokens, num_iterations)
@@ -108,7 +108,7 @@ class CameraHead(nn.Module):
         for _ in range(num_iterations):
             # Use a learned empty pose for the first iteration.
             if pred_pose_enc is None:
-                module_input = self.embed_pose(self.empty_pose_tokens.broadcast_to((B, S, self.empty_pose_tokens.shape[-1]))+0.0)
+                module_input = self.embed_pose(self.empty_pose_tokens.broadcast_to((B, S, self.empty_pose_tokens.shape[-1])))
             else:
                 
                 module_input = self.embed_pose(pred_pose_enc)

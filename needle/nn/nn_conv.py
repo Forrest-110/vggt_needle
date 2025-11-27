@@ -47,7 +47,7 @@ class Conv(Module):
 
     def forward(self, x: Tensor) -> Tensor:
         x_nhwc = ops.transpose(ops.transpose(x, (1,2)), (2, 3))
-        weight = self.weight.permute((2, 3, 1, 0)) + 0.0
+        weight = self.weight.permute((2, 3, 1, 0))
         y_nhwc = ops.conv(x_nhwc, weight, stride=self.stride, padding=self.padding)
         if self.bias is not None:
             b = ops.reshape(self.bias, (1, 1, 1, self.out_channels))
@@ -113,7 +113,7 @@ class ConvTranspose2d(Module):
     def forward(self, x: Tensor) -> Tensor:
         # x: NCHW -> NHWC
         x_nhwc = ops.transpose(ops.transpose(x, (1, 2)), (2, 3))  # (N, H, W, C_in)
-        weight = self.weight.permute((2, 3, 1, 0)) + 0.0
+        weight = self.weight.permute((2, 3, 1, 0))
         # Transposed conv in NHWC
         y_nhwc = ops.conv_transpose(
             x_nhwc,

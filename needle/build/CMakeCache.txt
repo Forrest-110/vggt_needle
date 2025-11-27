@@ -276,8 +276,8 @@ CUDA_SEPARABLE_COMPILATION:BOOL=OFF
 //Path to a file.
 CUDA_TOOLKIT_INCLUDE:PATH=/usr/local/cuda-12.4/include
 
-//Toolkit location.
-CUDA_TOOLKIT_ROOT_DIR:PATH=/usr/local/cuda-12.4
+//No help, variable specified on the command line.
+CUDA_TOOLKIT_ROOT_DIR:UNINITIALIZED=/usr/local/cuda-12.4
 
 //Use the static version of the CUDA runtime library if available
 CUDA_USE_STATIC_CUDA_RUNTIME:BOOL=ON
@@ -358,7 +358,7 @@ CUDA_rt_LIBRARY:FILEPATH=/usr/lib64/librt.a
 Python_EXECUTABLE:UNINITIALIZED=/home/yifeizh3/miniconda3/envs/sft/bin/python
 
 //Dependencies for the target
-ndarray_backend_cuda_LIB_DEPENDS:STATIC=general;/usr/local/cuda-12.4/lib64/libcudart_static.a;general;dl;general;/usr/lib64/librt.a;general;/usr/local/cuda-12.4/lib64/libcudart.so;
+ndarray_backend_cuda_LIB_DEPENDS:STATIC=general;/usr/local/cuda-12.4/lib64/libcudart_static.a;general;dl;general;/usr/lib64/librt.a;general;/usr/local/cuda-12.4/lib64/libcudart.so;general;/usr/local/cuda-12.4/lib64/libcublas.so;
 
 //Value Computed by CMake
 needle_BINARY_DIR:STATIC=/home/yifeizh3/workspace/vggt_needle/needle/build
@@ -542,7 +542,7 @@ CUDA_CUDA_LIBRARY-ADVANCED:INTERNAL=1
 //ADVANCED property for variable: CUDA_GENERATED_OUTPUT_DIR
 CUDA_GENERATED_OUTPUT_DIR-ADVANCED:INTERNAL=1
 //Returned GPU architectures from detect_gpus tool
-CUDA_GPU_DETECT_OUTPUT:INTERNAL=8.9
+CUDA_GPU_DETECT_OUTPUT:INTERNAL=8.9;8.9
 //ADVANCED property for variable: CUDA_HOST_COMPILATION_CPP
 CUDA_HOST_COMPILATION_CPP-ADVANCED:INTERNAL=1
 //ADVANCED property for variable: CUDA_NVCC_EXECUTABLE
@@ -627,7 +627,7 @@ CUDA_run_nvcc:INTERNAL=/usr/share/cmake/Modules/FindCUDA/run_nvcc.cmake
 //Details about finding CUDA
 FIND_PACKAGE_MESSAGE_DETAILS_CUDA:INTERNAL=[/usr/local/cuda-12.4][/usr/local/cuda-12.4/bin/nvcc][/usr/local/cuda-12.4/include][/usr/local/cuda-12.4/lib64/libcudart_static.a][v12.4()]
 //Details about finding Python
-FIND_PACKAGE_MESSAGE_DETAILS_Python:INTERNAL=[/home/yifeizh3/miniconda3/envs/sft/bin/python][/home/yifeizh3/miniconda3/envs/sft/include/python3.11][/home/yifeizh3/miniconda3/envs/sft/lib/libpython3.11.so][cfound components: Development Interpreter Development.Module Development.Embed ][v3.11.14()]
+FIND_PACKAGE_MESSAGE_DETAILS_Python:INTERNAL=[/home/yifeizh3/miniconda3/envs/sft/bin/python][/home/yifeizh3/miniconda3/envs/sft/include/python3.11][/home/yifeizh3/miniconda3/envs/sft/lib/libpython3.11.so][cfound components: Development Interpreter Development.Module Development.Embed ][v3.11.14(3.11)]
 //Details about finding Threads
 FIND_PACKAGE_MESSAGE_DETAILS_Threads:INTERNAL=[TRUE][v()]
 //Test HAS_FLTO_AUTO
@@ -653,7 +653,7 @@ _Python_EXECUTABLE:INTERNAL=/home/yifeizh3/miniconda3/envs/sft/bin/python
 _Python_INCLUDE_DIR:INTERNAL=/home/yifeizh3/miniconda3/envs/sft/include/python3.11
 //Python Properties
 _Python_INTERPRETER_PROPERTIES:INTERNAL=Python;3;11;14;64;;cpython-311-x86_64-linux-gnu;abi3;/home/yifeizh3/miniconda3/envs/sft/lib/python3.11;/home/yifeizh3/miniconda3/envs/sft/lib/python3.11;/home/yifeizh3/miniconda3/envs/sft/lib/python3.11/site-packages;/home/yifeizh3/miniconda3/envs/sft/lib/python3.11/site-packages
-_Python_INTERPRETER_SIGNATURE:INTERNAL=00c0d476a3c809dfb33b79249703be99
+_Python_INTERPRETER_SIGNATURE:INTERNAL=172e05c40a8ab9add6e19688aad72f2e
 //Interpreter reason failure
 _Python_Interpreter_REASON_FAILURE:INTERNAL=
 //Path to a library.

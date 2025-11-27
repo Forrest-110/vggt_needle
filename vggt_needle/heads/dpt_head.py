@@ -192,7 +192,7 @@ class DPTHead(nn.Module):
             Tensor or Tuple[Tensor, Tensor]: Feature maps or (predictions, confidence).
         """
         if frames_start_idx is not None and frames_end_idx is not None:
-            images = images[:, frames_start_idx:frames_end_idx, :, :, :] + 0.0
+            images = images[:, frames_start_idx:frames_end_idx, :, :, :]
 
         B, S, _, H, W = images.shape
 
@@ -202,17 +202,17 @@ class DPTHead(nn.Module):
         dpt_idx = 0
        
         for layer_idx in self.intermediate_layer_idx:
-            x = aggregated_tokens_list[layer_idx][:, :, patch_start_idx:, :] + 0.0
+            x = aggregated_tokens_list[layer_idx][:, :, patch_start_idx:, :]
             
             # Select frames if processing a chunk
             if frames_start_idx is not None and frames_end_idx is not None:
-                x = x[:, frames_start_idx:frames_end_idx, :, :] + 0.0
+                x = x[:, frames_start_idx:frames_end_idx, :, :]
 
             x = x.reshape((B * S, -1, x.shape[-1]))
 
             x = self.norm(x)
 
-            x = (x.permute((0, 2, 1))+0.0).reshape((x.shape[0], x.shape[-1], patch_h, patch_w))
+            x = x.permute((0, 2, 1)).reshape((x.shape[0], x.shape[-1], patch_h, patch_w))
             x = self.projects[dpt_idx](x)
             if self.pos_embed:
                 x = self._apply_pos_embed(x, W, H)
@@ -252,7 +252,7 @@ class DPTHead(nn.Module):
         pos_embed = create_uv_grid(patch_w, patch_h, aspect_ratio=W / H, dtype=x.dtype, device=x.device)
         pos_embed = position_grid_to_embed(pos_embed, x.shape[1])
         pos_embed = pos_embed * ratio
-        pos_embed = pos_embed.permute((2, 0, 1)) + 0.0
+        pos_embed = pos_embed.permute((2, 0, 1)) 
         pos_embed = pos_embed.reshape((1, *pos_embed.shape)).broadcast_to((x.shape[0], *pos_embed.shape))
         return x + pos_embed
 
@@ -473,6 +473,6 @@ def custom_interpolate(
                 torch.nn.functional.interpolate(torch.from_numpy(chunk.numpy()).numpy(), size=size, mode=mode, align_corners=align_corners), device=x.device) for chunk in chunks
         ]
         x = ops.cat(interpolated_chunks, dim=0)
-        return x+0.0
+        return x
     else:
         return Tensor(torch.nn.functional.interpolate(torch.from_numpy(x.numpy()), size=size, mode=mode, align_corners=align_corners).numpy(),device=x.device)

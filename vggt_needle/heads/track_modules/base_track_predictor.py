@@ -102,7 +102,7 @@ class BaseTrackerPredictor(nn.Module):
 
         # Init with coords as the query points
         # It means the search will start from the position of query points at the reference frames
-        coords = query_points.reshape((B, 1, N, 2)).broadcast_to((B, S, N, 2)) + 0.0
+        coords = query_points.reshape((B, 1, N, 2)).broadcast_to((B, S, N, 2))
 
         # Sample/extract the features of the query points in the query frame
         query_track_feat = sample_features4d(torch.from_numpy(fmaps.numpy())[:, 0], torch.from_numpy(coords.numpy())[:, 0])
@@ -110,9 +110,9 @@ class BaseTrackerPredictor(nn.Module):
         # init track feats by query feats
         track_feats = Tensor(query_track_feat.unsqueeze(1).repeat(1, S, 1, 1).numpy(), device=device)  # B, S, N, C
         # back up the init coords
-        coords_backup = coords.detach() + 0.0
+        coords_backup = coords.detach()
 
-        fcorr_fn = CorrBlock(fmaps+0.0, num_levels=self.corr_levels, radius=self.corr_radius)
+        fcorr_fn = CorrBlock(fmaps, num_levels=self.corr_levels, radius=self.corr_radius)
 
         coord_preds = []
 
@@ -125,18 +125,18 @@ class BaseTrackerPredictor(nn.Module):
             fcorrs = fcorr_fn.corr_sample(track_feats, coords)
 
             corr_dim = fcorrs.shape[3]
-            fcorrs_ = (fcorrs.permute((0, 2, 1, 3))+0.0).reshape((B * N, S, corr_dim))
+            fcorrs_ = (fcorrs.permute((0, 2, 1, 3))).reshape((B * N, S, corr_dim))
             fcorrs_ = self.corr_mlp(fcorrs_)
 
             # Movement of current coords relative to query points
-            flows = ((coords - coords[:, 0:1, :, :].broadcast_to(coords.shape)).permute((0, 2, 1, 3))+0.0).reshape((B * N, S, 2))
+            flows = ((coords - coords[:, 0:1, :, :].broadcast_to(coords.shape)).permute((0, 2, 1, 3))).reshape((B * N, S, 2))
 
             flows_emb = Tensor(get_2d_embedding(torch.from_numpy(flows.numpy()), self.flows_emb_dim, cat_coords=False).numpy(), device=device)
 
             # (In my trials, it is also okay to just add the flows_emb instead of concat)
             flows_emb = ops.cat([flows_emb, flows / self.max_scale, flows / self.max_scale], dim=-1)
 
-            track_feats_ = (track_feats.permute((0, 2, 1, 3))+0.0).reshape((B * N, S, self.latent_dim))
+            track_feats_ = (track_feats.permute((0, 2, 1, 3))).reshape((B * N, S, self.latent_dim))
 
             # Concatenate them as the input for the transformers
             transformer_input = ops.cat([flows_emb, fcorrs_, track_feats_], dim=2)
@@ -168,17 +168,17 @@ class BaseTrackerPredictor(nn.Module):
             delta_coords_ = delta[:, :, :2]
             delta_feats_ = delta[:, :, 2:]
 
-            track_feats_ = (track_feats_+0.0).reshape((B * N * S, self.latent_dim))
-            delta_feats_ = (delta_feats_+0.0).reshape((B * N * S, self.latent_dim))
+            track_feats_ = (track_feats_).reshape((B * N * S, self.latent_dim))
+            delta_feats_ = (delta_feats_).reshape((B * N * S, self.latent_dim))
 
             # Update the track features
             tmp = self.ffeat_updater(self.ffeat_norm(delta_feats_))
             track_feats_ = tmp + track_feats_.broadcast_to(tmp.shape)
 
-            track_feats = track_feats_.reshape((B, N, S, self.latent_dim)).permute((0, 2, 1, 3))+0.0  # BxSxNxC
+            track_feats = track_feats_.reshape((B, N, S, self.latent_dim)).permute((0, 2, 1, 3))  # BxSxNxC
             
             # B x S x N x 2
-            coords = coords + (delta_coords_ + 0.0).reshape((B, N, S, 2)).permute((0, 2, 1, 3))
+            coords = coords + (delta_coords_).reshape((B, N, S, 2)).permute((0, 2, 1, 3))
 
             coords = ops.cat(
                 [coords_backup[:, 0:1, :, :], coords[:, 1:, :, :]],  # both shapes (B, S_subset, N, 2)
